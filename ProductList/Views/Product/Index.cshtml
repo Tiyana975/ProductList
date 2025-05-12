@@ -1,0 +1,172 @@
+﻿@model ProductList.Models.ProductViewModel
+
+@{
+    ViewBag.Title = "Product List";
+}
+<br />
+<div class="row">
+    <div class="col-md-4">
+        <div class="mb-3">
+            <label for="supplierDropdown" class="form-label">Supplier:</label>
+            @Html.DropDownListFor(model => model.SelectedSupplierId,
+                new SelectList(Model.Suppliers, "SupplierId", "SupplierName"),
+                "Select a supplier",
+                new { @id = "supplierDropdown", @class = "form-select" })
+        </div>
+
+        <div class="mb-3">
+            <label for="categoryDropdown" class="form-label">Category:</label>
+
+            @Html.DropDownListFor(model => model.SelectedCategoryId,
+                Enumerable.Empty<SelectListItem>(),
+                "Select a category",
+                new { @id = "categoryDropdown", @class = "form-select", disabled="disabled" })
+        </div>
+
+        <div class="mb-3">
+            <label for="productDropdown" class="form-label">Product:</label>
+            @Html.DropDownListFor(model => model.SelectedProductId,
+                Enumerable.Empty<SelectListItem>(),
+                "Select a product",
+                new { @id = "categoryDropdown", @class = "form-select", disabled = "disabled" })
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="mb-3">
+            <label for="productValue" class="form-label">Value:</label>
+            <input type="number" id="productValue" class="form-control" placeholder="Enter value" disabled />
+        </div>
+
+        <div class="mb-3">
+            <label for="serialNumber" class="form-label">Serial:</label>
+            <input type="text" id="serialNumber" class="form-control" maxlength="10" placeholder="Max 10 digits" disabled />
+        </div>
+
+        <div class="mb-3 d-grid gap-2" style="padding-top: 25px;">
+            <input type="button" id="addProductButton" value="Add" class="btn btn-primary" disabled />
+        </div>
+    </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+    $(document).ready(function () {
+        
+        $("#categoryDropdown, #productDropdown, #productValue, #serialNumber, #addProductButton").prop("disabled", true);
+
+        
+        $("#supplierDropdown").change(function () {
+            let SupplierId = $(this).val();
+            $("#categoryDropdown").prop("disabled", true).empty().append($("<option>").val("").text("Select a category"));
+            $("#productDropdown").prop("disabled", true).empty().append($("<option>").val("").text("Select a product"));
+            $("#productValue, #serialNumber").val("").prop("disabled", true);
+            $("#addProductButton").prop("disabled", true);
+
+            if (SupplierId) {
+                $.get('@Url.Action("GetCategoriesBySupplier", "Product")', { SupplierId }, function (data) {
+                    $.each(data, function (i, category) {
+                        $("#categoryDropdown").append($("<option>").val(category.CategoryID).text(category.CategoryName));
+                    });
+                    $("#categoryDropdown").prop("disabled", false);
+                });
+            }
+        });
+
+        // Category → Product
+        $("#categoryDropdown").change(function () {
+            let CategoryId = $(this).val();
+            $("#productDropdown").prop("disabled", true).empty().append($("<option>").val("").text("Select a product"));
+            $("#productValue, #serialNumber").val("").prop("disabled", true);
+            $("#addProductButton").prop("disabled", true);
+
+            if (CategoryId) {
+                $.get('@Url.Action("GetProductsByCategory", "Product")', { CategoryId }, function (data) {
+                    let names = data.split(";")[0].split(",");
+                    let ids = data.split(";")[1].split(",");
+                    for (let i = 0; i < names.length; i++) {
+                        $("#productDropdown").append($("<option>").val(ids[i]).text(names[i]));
+                    }
+                    $("#productDropdown").prop("disabled", false);
+                });
+            }
+        });
+
+        // Product → Enable value + serial
+        $("#productDropdown").change(function () {
+            if ($(this).val()) {
+                $("#productValue, #serialNumber, #addProductButton").prop("disabled", false);
+            } else {
+                $("#productValue, #serialNumber, #addProductButton").prop("disabled", true);
+            }
+        });
+
+        // Validate serial (only numbers, max 10)
+        $("#serialNumber").on("input", function () {
+            this.value = this.value.replace(/\D/g, "").substring(0, 10);
+        });
+
+        // Add row
+        $("#addProductButton").click(function () {
+            const supplier = $("#supplierDropdown option:selected").text();
+            const category = $("#categoryDropdown option:selected").text();
+            const product = $("#productDropdown option:selected").text();
+            const value = $("#productValue").val();
+            const serial = $("#serialNumber").val();
+            const rowId = Date.now();
+
+            const row = `
+                <tr id="row-${rowId}">
+                    <td>${rowId}</td>
+                    <td>${supplier}</td>
+                    <td>${category}</td>
+                    <td>${product}</td>
+                    <td class="value">${value}</td>
+                    <td class="serial">${serial}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success editBtn">Edit</button>
+                        <button class="btn btn-sm btn-danger deleteBtn">Delete</button>
+                    </td>
+                </tr>
+            `;
+            $("#productTable tbody").append(row);
+
+            $("#supplierDropdown").val("");
+            $("#categoryDropdown, #productDropdown").prop("disabled", true).empty().append($("<option>").val("").text("Select..."));
+            $("#productValue, #serialNumber").val("").prop("disabled", true);
+            $("#addProductButton").prop("disabled", true);
+        });
+
+        $(document).on("click", ".deleteBtn", function () {
+            $(this).closest("tr").remove();
+        });
+
+        $(document).on("click", ".editBtn", function () {
+            const row = $(this).closest("tr");
+            const valTd = row.find(".value");
+            const serialTd = row.find(".serial");
+
+            const val = valTd.text();
+            const serial = serialTd.text();
+
+            valTd.html(`<input type="number" class="form-control" value="${val}">`);
+            serialTd.html(`<input type="text" maxlength="10" class="form-control" value="${serial}">`);
+
+            $(this).removeClass("editBtn btn-success").addClass("saveBtn btn-primary").text("Save");
+        });
+
+        $(document).on("click", ".saveBtn", function () {
+            const row = $(this).closest("tr");
+            const newVal = row.find(".value input").val();
+            const newSerial = row.find(".serial input").val();
+
+            row.find(".value").text(newVal);
+            row.find(".serial").text(newSerial);
+
+            $(this).removeClass("saveBtn btn-primary").addClass("editBtn btn-success").text("Edit");
+        });
+    });
+    </script>
+}
